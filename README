@@ -1,0 +1,24 @@
+Please Login into the EC2 instance and then update docker compose file: 
+Now login into the Ec2 instance : ssh i <ssh key> ec2user @<IP> 
+
+a)  Ec2 Instance path /home/ec2-user/snappass.
+
+b) edit  docker-compose.yml change the port from 5000:5000 to 
+
+  ports:
+
+            - "80:5000"
+
+Only http is supported by the docker application code. Save the file and exit 
+
+c) now run    docker-compose up -d
+
+
+
+Now the application is up in your browser. 
+
+
+
+How to Test the application : 
+
+http://<Private IP of the EC2 Instance>
