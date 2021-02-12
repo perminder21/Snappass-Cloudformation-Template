@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Password sharing app internal use
+Parameters:
+  # Build Info
+  # I have not Declated VPC and Subnet in this Template, if you want you can define the VPCID and Subnet in this template and use it, for non default VPC. 
+  
+  Ec2Instance1IP1:
+    Type: String
+    Default: <IP Address of Instance>
+  LinuxAMI:
+    Type: String
+    Default: ami-04f77aa5970939148 
+  InstanceType:
+    Type: String
+    Default: t2.micro < Instance Type>
+  SshKey:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: SSH key to associate with ec2 instance
+    Default: <KeyName >
+  # Tag
+  CostCentreTag:
+    Type: String
+    Default: 1
+  ProjectTag:
+    Type: String
+    Default: shared
+  DescriptionTag:
+    Type: String
+    Default: Snappass application
+  OwnerTag:
+    Type: String
+    Default: Dev/Prod
+  Ec2LinuxName1:
+    Type: String
+    Default: Snappass.local
+  SgEc2LinuxName:
+    Type: String
+    Default: sgp-sharedservices-snappass
+Resources:
+  # Security Group - Linux
+  SgEc2Linux:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for Snappass Application
+      VpcId: !ImportValue PSVpcId
+      Tags:
+        - Key: Name
+          Value: !Ref SgEc2LinuxName
+  SgEc2LinuxIn1:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SgEc2Linux
+      IpProtocol: '-1'
+      CidrIp: 10.0.0.0/8
+      FromPort: '-1'
+      ToPort: '-1'
+  SgEc2LinuxIn2:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SgEc2Linux
+      IpProtocol: '-1'
+      CidrIp: 0.0.0.0/16
+      FromPort: '-1'
+      ToPort: '-1'
+#  SgEc2LinuxIn3:
+#    Type: AWS::EC2::SecurityGroupIngress
+#    Properties:
+#      GroupId: !Ref SgEc2Linux
+#     IpProtocol: 'tcp'
+#      CidrIp: 0.0.0.0/32
+#      FromPort: '22'
+#     ToPort: '22' 
+  Ec2Instance01:
+    Type: AWS::EC2::Instance
+    Metadata:
+            AWS::CloudFormation::Init:
+                configSets:
+                    ec2_bootstrap:
+                        - install_docker
+                install_docker:
+                    packages:
+                        yum:
+                            docker: []
+                    services:
+                        sysvinit:
+                            docker:
+                                enabled: "true"
+                                ensureRunning: "true"
+                    commands:
+                        docker_for_ec2_user:
+                            command: usermod -G docker ec2-user
+    Properties:
+      ImageId: !Ref LinuxAMI
+      InstanceType: !Ref InstanceType
+      #IamInstanceProfile: !Ref SSMEc2RoleProfile
+      KeyName: !Ref SshKey
+      PrivateIpAddress: !Ref Ec2Instance1IP1
+      SubnetId: !ImportValue SbnVpcAdB
+      SecurityGroupIds:
+      - !Ref SgEc2Linux
+      UserData:
+                Fn::Base64:
+                    !Sub |
+                        #!/bin/bash -xe
+
+                        function cfn_fail
+                        {
+                            cfn-signal -e 1 --stack ${AWS::StackName} --resource Ec2Instance01 --region ${AWS::Region}
+                            exit 1
+                        }
+
+                        function cfn_success
+                        {
+                            cfn-signal -e 0 --stack ${AWS::StackName} --resource Ec2Instance01 --region ${AWS::Region}
+                            exit 0
+                        }
+
+                        yum -y install git python3-pip docker
+                        cd /home/ec2-user 
+                        until git clone https://github.com/samueldg/snappass.git; do echo "Retrying..."; done
+                        cd snappass;
+                        sudo service docker start
+                        sudo usermod -a -G docker ec2-user
+                        until sudo curl -L https://github.com/docker/compose/releases/download/1.21.0/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose; do echo "Retrying..."; done
+                        sudo chmod +x /usr/local/bin/docker-compose
+                        sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+                        sudo service docker start
+                        sudo usermod -a -G docker ec2-user 
+                        docker-compose build
+                        docker-compose up -d
+
+      Tags:
+        - Key: Name
+          Value: !Ref Ec2LinuxName1
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Description
+          Value: !Ref DescriptionTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Cost Centre
+          Value: !Ref CostCentreTag
